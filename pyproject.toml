@@ -1,0 +1,26 @@
+[project]
+name = "autonomous-api-patching"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.12.0",
+    "fastapi>=0.111.0",
+    "gitpython>=3.1.43",
+    "httpx>=0.27.0",
+    "huggingface-hub>=0.23.0",
+    "langchain>=0.2.0",
+    "langchain-community>=0.2.0",
+    "langgraph>=0.0.60",
+    "motor>=3.4.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "pymongo>=4.7.0",
+    "pytest>=8.2.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.0",
+    "sentence-transformers>=3.0.0",
+    "streamlit>=1.35.0",
+    "uvicorn[standard]>=0.30.0",
+]
