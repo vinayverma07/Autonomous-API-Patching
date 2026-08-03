@@ -1,0 +1,20 @@
+
+{
+  "patch_strategies": [
+    {
+      "error": "AttributeError",
+      "symptom": "'NoneType' object has no attribute 'strip'",
+      "fix": "Replace direct dictionary access with .get('key') or fallback check (value or '').strip()"
+    },
+    {
+      "error": "KeyError",
+      "symptom": "Missing dict key during access",
+      "fix": "Use .get('key', default_value) or explicit 'if key in dict' check"
+    },
+    {
+      "error": "ZeroDivisionError",
+      "symptom": "division by zero during numerical operation",
+      "fix": "Add guard clause checking if denominator is 0 before division"
+    }
+  ]
+}

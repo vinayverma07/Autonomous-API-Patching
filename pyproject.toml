@@ -12,6 +12,7 @@ dependencies = [
     "huggingface-hub>=0.23.0",
     "langchain>=0.2.0",
     "langchain-community>=0.2.0",
+    "langchain-openai>=1.4.1",
     "langgraph>=0.0.60",
     "motor>=3.4.0",
     "pydantic>=2.7.0",
