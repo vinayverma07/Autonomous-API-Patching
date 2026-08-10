@@ -42,23 +42,18 @@ async def get_current_user_from_token(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
 ) -> dict:
-    """
-    Extracts user token from Bearer Header or HTTP-only Cookie.
-    Safely handles both FastAPI Dependency Injection and direct function calls.
-    """
+    """Extracts user token from Bearer Authorization header."""
     token = None
 
-    # Check if credentials is an actual HTTPAuthorizationCredentials object (not raw Depends instance)
     if credentials and hasattr(credentials, "credentials"):
         token = credentials.credentials
     else:
-        # Fallback to cookies for UI/HTML sessions
         token = request.cookies.get("access_token")
 
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required. Please log in.",
+            detail="Authentication token required. Please log in.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

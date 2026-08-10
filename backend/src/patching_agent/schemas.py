@@ -14,6 +14,7 @@ class UserLoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    username: str
 
 class UserResponse(BaseModel):
     id: str

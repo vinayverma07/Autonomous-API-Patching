@@ -98,7 +98,7 @@ class DatabaseManager:
             return False
 
     async def get_user_repair_history(self, username: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Retrieves all historical repair records created by a specific user."""
+        """Retrieves all historical repair records for a user, formatted safely for JSON serialization."""
         if self.db is None:
             return []
 
@@ -106,29 +106,15 @@ class DatabaseManager:
             collection = self.db["repair_history"]
             cursor = collection.find({"username": username}).sort("timestamp", -1).limit(limit)
             records = await cursor.to_list(length=limit)
-            # Format MongoDB ObjectIDs to strings for Jinja rendering
+            
+            # Format MongoDB ObjectIDs and Datetime instances to JSON-compatible strings
             for r in records:
                 r["_id"] = str(r["_id"])
+                if isinstance(r.get("timestamp"), datetime):
+                    r["timestamp"] = r["timestamp"].isoformat()
             return records
         except Exception as e:
             logger.error(f"Error fetching history for user {username}: {e}")
             return []
-
-    async def get_repair_record(self, session_id: str) -> Optional[Dict[str, Any]]:
-        if self.db is None:
-            return None
-        return await self.db["repair_history"].find_one({"session_id": session_id})
-
-    async def fetch_successful_patches(self, error_type: str) -> List[Dict[str, Any]]:
-        if self.db is None:
-            return []
-
-        collection = self.db["repair_history"]
-        query = {
-            "failure_analysis.error_type": error_type,
-            "execution_status": "patch_validated_successfully"
-        }
-        cursor = collection.find(query).sort("timestamp", -1).limit(3)
-        return await cursor.to_list(length=3)
 
 db_manager = DatabaseManager()
