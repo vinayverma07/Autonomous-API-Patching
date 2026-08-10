@@ -14,7 +14,7 @@ const ProtectedLayout = ({ children }) => {
   }
 
   return (
-    <div className="flex bg-slate-900 text-slate-100 min-h-screen font-sans">
+    <div className="flex bg-gradient-to-br from-purple-100/70 via-white to-purple-200/60 min-h-screen font-sans text-slate-800">
       <Sidebar />
       <div className="flex-1 overflow-y-auto">{children}</div>
     </div>
