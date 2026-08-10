@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Self-Healing API Patching Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <!-- Header Navigation -->
+    <nav class="border-b border-slate-800 bg-slate-950/50 px-8 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl">🤖</span>
+            <h1 class="text-xl font-bold tracking-tight text-white">Self-Healing API Patching Engine</h1>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <span class="text-sm text-slate-400">Logged in as: <strong class="text-indigo-400">{{ username }}</strong></span>
+            <a href="/auth/logout" class="bg-red-950/50 hover:bg-red-900 text-red-300 text-xs px-3 py-1.5 rounded-md border border-red-800 transition-colors">
+                Logout
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Workspace -->
+    <main class="max-w-7xl mx-auto p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Input Diagnostics Panel -->
+        <section class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6 shadow-xl">
+            <h2 class="text-lg font-semibold text-white mb-4">📥 Inbound Failure Diagnostics</h2>
+            
+            <form id="repair-form" 
+                  hx-post="/api/repair-html" 
+                  hx-target="#execution-status-container" 
+                  hx-swap="innerHTML"
+                  class="space-y-4">
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Target Broken File Path</label>
+                    <input type="text" name="target_file_path" value="src/sample_api.py" required
+                           class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Raw API Exception Logs / Traceback Dump</label>
+                    <textarea name="raw_logs" rows="5" required placeholder="Paste traceback here..."
+                              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Original Broken Codebase Content</label>
+                    <textarea name="original_code" rows="8" required placeholder="Paste broken code here..."
+                              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500"></textarea>
+                </div>
+
+                <button type="submit" 
+                        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-600/30">
+                    🚀 Execute Autonomous Repair Loop
+                </button>
+            </form>
+        </section>
+
+        <!-- Status & Results Output Panel -->
+        <section class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6 shadow-xl flex flex-col">
+            <h2 class="text-lg font-semibold text-white mb-4">🧠 Agentic Lifecycle Orchestration</h2>
+            <div id="execution-status-container" class="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm">
+                <div class="text-center space-y-2">
+                    <p class="text-3xl">⚙️</p>
+                    <p>System Idle. Submit a repair request to initialize the repair pipeline.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>

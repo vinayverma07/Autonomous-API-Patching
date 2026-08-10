@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - API Patching Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center font-sans">
+    <div class="bg-slate-800 border border-slate-700 p-8 rounded-xl shadow-2xl w-full max-w-md">
+        <h2 class="text-2xl font-bold text-center mb-6 text-white">🔐 Welcome Back</h2>
+        
+        <div id="message-container" class="mb-4"></div>
+
+        <form hx-post="/auth/login-form" hx-target="#message-container" class="space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Username or Email</label>
+                <input type="text" name="username_or_email" required
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Password</label>
+                <input type="password" name="password" required
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-lg transition-colors">
+                Sign In
+            </button>
+        </form>
+
+        <p class="text-center text-xs text-slate-400 mt-6">
+            Don't have an account? <a href="/register" class="text-indigo-400 hover:underline">Register here</a>
+        </p>
+    </div>
+</body>
+</html>

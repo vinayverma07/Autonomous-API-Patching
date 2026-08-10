@@ -1,20 +1,38 @@
+# Web Framework & Async Server
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
-streamlit>=1.35.0
+jinja2>=3.1.0
+python-multipart
+httpx>=0.27.0
+requests>=2.32.0
+
+# Authentication & Security
+passlib[bcrypt]
+pyjwt
+python-multipart
+
+# AI & Orchestration
 langchain>=0.2.0
 langchain-community>=0.2.0
+langchain-openai
 langgraph>=0.0.60
-pydantic>=2.7.0
-pydantic-settings>=2.3.0
-motor>=3.4.0
-pymongo>=4.7.0
+
+# Local Embeddings & RAG
 sentence-transformers>=3.0.0
 huggingface-hub>=0.23.0
-requests>=2.32.0
+torch
 beautifulsoup4>=4.12.0
-gitpython>=3.1.43
+
+# Database (Async MongoDB)
+motor>=3.4.0
+pymongo>=4.7.0
+
+# Environment & Settings
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
 python-dotenv>=1.0.1
+
+# Utilities & Frontend UI
+streamlit>=1.35.0
+gitpython>=3.1.43
 pytest>=8.2.0
-httpx>=0.27.0
-langchain-openai
-pydantic-settings

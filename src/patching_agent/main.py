@@ -1,22 +1,21 @@
-"""
-Module: FastAPI Backend Service Core
-File Path: src/patching_agent/main.py
-Description: Asynchronous API engine providing REST infrastructure and 
-             non-blocking background workers for autonomous code repairs.
-"""
-
 import asyncio
 import logging
 import uuid
+from pathlib import Path
 from typing import Dict, Any
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Form, Depends, status, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-# Import Database Manager, State Model, and Agents
 from patching_agent.database import db_manager
+from patching_agent.schemas import UserRegisterRequest, UserLoginRequest, TokenResponse
+from patching_agent.auth import (
+    hash_password, verify_password, create_access_token, get_current_user_from_token
+)
 from patching_agent.agents.state import AgentGraphState
-from patching_agent.agents.graph import SelfHealingAgentGraph
 from patching_agent.agents.detector import FailureDetectionAgent
 from patching_agent.agents.retriever import RetrieverAgentNode
 from patching_agent.agents.reasoner import ReasoningAgentNode
@@ -29,8 +28,11 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_REPAIR_JOBS: Dict[str, Dict[str, Any]] = {}
 
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
 def build_execution_graph():
-    """Instantiates and wires real agent nodes into a fresh StateGraph topology."""
     detector = FailureDetectionAgent()
     retriever = RetrieverAgentNode()
     reasoner = ReasoningAgentNode()
@@ -38,13 +40,11 @@ def build_execution_graph():
     validator = PatchValidatorNode()
     retry_agent = RetryAgentNode()
 
-    # --- CORRECTED: Instantiate a new StateGraph directly to avoid duplicate node collisions ---
     from langgraph.graph import StateGraph, END
     from patching_agent.agents.graph import route_patch_validation
 
     workflow = StateGraph(AgentGraphState)
 
-    # 1. Bind real agent execution methods
     workflow.add_node("detect_failure", detector.analyze)
     workflow.add_node("retrieve_docs", retriever.retrieve)
     workflow.add_node("reason_repair", reasoner.reason)
@@ -52,7 +52,6 @@ def build_execution_graph():
     workflow.add_node("validate_patch", validator.validate)
     workflow.add_node("retry_repair", retry_agent.process_failure)
 
-    # Placeholders for terminal status updates
     async def finalize_success_node(state: AgentGraphState):
         return {"execution_status": "successfully_patched"}
 
@@ -62,14 +61,12 @@ def build_execution_graph():
     workflow.add_node("finalize_success", finalize_success_node)
     workflow.add_node("terminate_failure", terminate_failure_node)
 
-    # 2. Build flow connections
     workflow.set_entry_point("detect_failure")
     workflow.add_edge("detect_failure", "retrieve_docs")
     workflow.add_edge("retrieve_docs", "reason_repair")
     workflow.add_edge("reason_repair", "generate_patch")
     workflow.add_edge("generate_patch", "validate_patch")
 
-    # 3. Conditional validation router loop
     workflow.add_conditional_edges(
         "validate_patch",
         route_patch_validation,
@@ -85,6 +82,7 @@ def build_execution_graph():
 
     return workflow.compile()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -97,22 +95,23 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+
 app = FastAPI(
     title="Self-Healing API Patching Engine",
     version="1.0.0",
-    description="Asynchronous engine providing REST infrastructure for autonomous software repairs.",
+    description="Asynchronous engine for autonomous software repairs.",
     lifespan=lifespan
 )
+
 
 class RepairRequestPayload(BaseModel):
     target_file_path: str = Field(..., description="Path to the broken target file.")
     raw_logs: str = Field(..., description="The raw crash log or stack trace.")
     original_code: str = Field(..., description="The complete text content of the broken file.")
 
-async def execute_real_repair_worker(session_id: str, payload: RepairRequestPayload):
-    logger.info(f"Background agent thread activated for patch session: {session_id}")
-    ACTIVE_REPAIR_JOBS[session_id]["status"] = "in_progress"
 
+async def execute_real_repair_worker(session_id: str, payload: RepairRequestPayload):
+    ACTIVE_REPAIR_JOBS[session_id]["status"] = "in_progress"
     initial_state = AgentGraphState(
         raw_logs=payload.raw_logs,
         target_file_path=payload.target_file_path,
@@ -129,120 +128,227 @@ async def execute_real_repair_worker(session_id: str, payload: RepairRequestPayl
         ACTIVE_REPAIR_JOBS[session_id]["validation_report"] = final_state_dict.get("validation_report", {})
 
         await db_manager.save_repair_history(session_id, final_state_dict)
-        logger.info(f"Agent graph execution completed for session: {session_id}")
 
     except Exception as e:
-        logger.error(f"Execution error inside background repair worker: {e}")
         ACTIVE_REPAIR_JOBS[session_id]["status"] = "execution_error"
         ACTIVE_REPAIR_JOBS[session_id]["error"] = str(e)
 
-# --- CORRECTED: Added explicit health check endpoint for Streamlit pinging ---
-@app.get("/api/health")
-async def health_check():
-    return {"status": "online"}
+
+# ==========================================
+# 🔐 AUTHENTICATION ENDPOINTS (JSON API)
+# ==========================================
+
+@app.post("/api/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register_user(payload: UserRegisterRequest):
+    hashed_pwd = hash_password(payload.password)
+    user = await db_manager.create_user(
+        username=payload.username,
+        email=payload.email,
+        hashed_password=hashed_pwd
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or Email already registered."
+        )
+
+    token = create_access_token({"sub": user["username"], "email": user["email"]})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login_user(payload: UserLoginRequest):
+    user = await db_manager.get_user_by_identifier(payload.username_or_email)
+    if not user or not verify_password(payload.password, user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials."
+        )
+
+    token = create_access_token({"sub": user["username"], "email": user["email"]})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+# ==========================================
+# 🌐 UI HTML ROUTES (Register, Login, Dashboard)
+# ==========================================
+
+@app.get("/register", response_class=HTMLResponse)
+async def serve_register_page(request: Request):
+    return templates.TemplateResponse(request=request, name="register.html")
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def serve_login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html")
+
+
+@app.post("/auth/register-form", response_class=HTMLResponse)
+async def register_from_form(
+    response: Response,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...)
+):
+    hashed_pwd = hash_password(password)
+    user = await db_manager.create_user(username, email, hashed_pwd)
+    
+    if not user:
+        return "<div class='p-3 bg-red-900/50 text-red-300 rounded text-sm'>User or Email already exists!</div>"
+
+    token = create_access_token({"sub": user["username"], "email": user["email"]})
+    response.headers["HX-Redirect"] = "/"
+    response.set_cookie("access_token", token, httponly=True)
+    return "<div>Redirecting...</div>"
+
+
+@app.post("/auth/login-form", response_class=HTMLResponse)
+async def login_from_form(
+    response: Response,
+    username_or_email: str = Form(...),
+    password: str = Form(...)
+):
+    user = await db_manager.get_user_by_identifier(username_or_email)
+    if not user or not verify_password(password, user["password"]):
+        return "<div class='p-3 bg-red-900/50 text-red-300 rounded text-sm'>Invalid username or password!</div>"
+
+    token = create_access_token({"sub": user["username"], "email": user["email"]})
+    response.headers["HX-Redirect"] = "/"
+    response.set_cookie("access_token", token, httponly=True)
+    return "<div>Redirecting...</div>"
+
+
+@app.get("/auth/logout")
+async def logout():
+    response = RedirectResponse(url="/login")
+    response.delete_cookie("access_token")
+    return response
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_dashboard(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    try:
+        current_user = await get_current_user_from_token(request)
+        return templates.TemplateResponse(
+            request=request, 
+            name="index.html", 
+            context={"username": current_user["username"]}
+        )
+    except HTTPException:
+        return RedirectResponse(url="/login")
+
+
+# ==========================================
+# 🛠️ PROTECTED API REPAIR ENDPOINTS
+# ==========================================
 
 @app.post("/api/repair", status_code=202)
-async def initialize_repair_sequence(payload: RepairRequestPayload, background_tasks: BackgroundTasks):
+async def initialize_repair_sequence(
+    payload: RepairRequestPayload,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user_from_token)
+):
     session_id = str(uuid.uuid4())
     ACTIVE_REPAIR_JOBS[session_id] = {
         "status": "queued",
         "target_file_path": payload.target_file_path,
-        "generated_patch": None
+        "generated_patch": None,
+        "user": current_user["username"]
     }
     background_tasks.add_task(execute_real_repair_worker, session_id, payload)
-    return {
-        "session_id": session_id,
-        "status": "queued"
-    }
+    return {"session_id": session_id, "status": "queued"}
+
 
 @app.get("/api/status/{session_id}")
-async def fetch_job_status(session_id: str):
+async def fetch_job_status(
+    session_id: str,
+    current_user: dict = Depends(get_current_user_from_token)
+):
     if session_id not in ACTIVE_REPAIR_JOBS:
         raise HTTPException(status_code=404, detail="Requested session token not found.")
     return ACTIVE_REPAIR_JOBS[session_id]
 
+
+@app.post("/api/repair-html", response_class=HTMLResponse)
+async def initialize_repair_from_html(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    target_file_path: str = Form(...),
+    raw_logs: str = Form(...),
+    original_code: str = Form(...)
+):
+    try:
+        current_user = await get_current_user_from_token(request)
+    except HTTPException:
+        return "<div class='p-4 bg-red-950/40 text-red-400 rounded-lg text-sm'>Session expired. Please log in again.</div>"
+
+    payload = RepairRequestPayload(
+        target_file_path=target_file_path,
+        raw_logs=raw_logs,
+        original_code=original_code
+    )
+    
+    session_id = str(uuid.uuid4())
+    ACTIVE_REPAIR_JOBS[session_id] = {
+        "status": "queued",
+        "target_file_path": target_file_path,
+        "generated_patch": None,
+        "user": current_user["username"]
+    }
+    background_tasks.add_task(execute_real_repair_worker, session_id, payload)
+
+    return f"""
+    <div hx-get="/api/status-html/{session_id}" hx-trigger="every 1.5s" hx-swap="outerHTML" class="w-full space-y-4">
+        <div class="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-lg text-indigo-300 text-sm flex items-center justify-between">
+            <span>Job Queued for Processing...</span>
+            <span class="animate-pulse">⏳</span>
+        </div>
+    </div>
+    """
+
+
+@app.get("/api/status-html/{session_id}", response_class=HTMLResponse)
+async def fetch_job_status_html(session_id: str):
+    job = ACTIVE_REPAIR_JOBS.get(session_id)
+    if not job:
+        return "<div class='p-4 bg-red-950/40 text-red-400 rounded-lg text-sm'>Session token not found.</div>"
+
+    status_val = job.get("status", "unknown")
+
+    if status_val in ["patch_validated_successfully", "successfully_patched"]:
+        patch_code = job.get("generated_patch", "")
+        return f"""
+        <div class="w-full space-y-4">
+            <div class="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm font-medium">
+                🎉 Code Repair Successful! Patch Applied & Validated.
+            </div>
+            <pre class="bg-slate-950 p-4 rounded-lg border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto"><code>{patch_code}</code></pre>
+        </div>
+        """
+    elif status_val in ["failed_to_patch", "execution_error", "unit_tests_failed"]:
+        error_msg = job.get("error", "Repair pipeline could not resolve the issue.")
+        return f"""
+        <div class="w-full space-y-2 p-4 bg-red-950/40 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <p class="font-semibold">❌ Repair Process Failed</p>
+            <p class="text-xs text-red-300">Status: {status_val}</p>
+            <p class="text-xs text-slate-400 font-mono mt-2">{error_msg}</p>
+        </div>
+        """
+    else:
+        return f"""
+        <div hx-get="/api/status-html/{session_id}" hx-trigger="every 1.5s" hx-swap="outerHTML" class="w-full space-y-4">
+            <div class="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-lg text-indigo-300 text-sm flex items-center justify-between">
+                <span>Current Execution Status: <strong class="text-white">{status_val}</strong></span>
+                <span class="animate-spin">⚙️</span>
+            </div>
+        </div>
+        """
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("patching_agent.main:app", host="127.0.0.1", port=8000, reload=True)
-
-
-
-
-
-
-
-# """
-# Module: FastAPI Backend Service Core
-# File Path: src/patching_agent/main.py
-# Description: Asynchronous API engine providing REST infrastructure and 
-#              non-blocking background workers for autonomous code repairs.
-# """
-
-# import asyncio
-# import logging
-# import uuid
-# from typing import Dict, Any
-# from fastapi import FastAPI, HTTPException, BackgroundTasks
-# from pydantic import BaseModel, Field
-
-# logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
-# logger = logging.getLogger(__name__)
-
-# app = FastAPI(
-#     title="Self-Healing API Patching Engine",
-#     version="1.0.0",
-#     description="Asynchronous engine providing REST infrastructure for autonomous software repairs."
-# )
-
-# ACTIVE_REPAIR_JOBS: Dict[str, Dict[str, Any]] = {}
-
-# class RepairRequestPayload(BaseModel):
-#     """Input validation schema for the repair processing node."""
-#     target_file_path: str = Field(..., description="Path to the broken target file.")
-#     raw_logs: str = Field(..., description="The raw crash log or stack trace.")
-#     original_code: str = Field(..., description="The complete text content of the broken file.")
-
-# async def simulate_repair_worker(session_id: str, payload: RepairRequestPayload):
-#     """Simulates the background execution worker flow."""
-#     logger.info(f"Background worker thread activated for patch session: {session_id}")
-#     ACTIVE_REPAIR_JOBS[session_id]["status"] = "analyzing_logs"
-#     await asyncio.sleep(1.5)
-    
-#     ACTIVE_REPAIR_JOBS[session_id]["status"] = "retrieving_docs"
-#     await asyncio.sleep(1.5)
-    
-#     ACTIVE_REPAIR_JOBS[session_id]["status"] = "synthesizing_patch"
-#     await asyncio.sleep(2.0)
-    
-#     ACTIVE_REPAIR_JOBS[session_id]["generated_patch"] = (
-#         f"# Automated Patch Fix for {payload.target_file_path}\n"
-#         "import logging\n\n# Corrected execution logic\n"
-#     )
-#     ACTIVE_REPAIR_JOBS[session_id]["status"] = "completed_successfully"
-#     logger.info(f"Background worker completed for session: {session_id}")
-
-# @app.post("/api/repair", status_code=202)
-# async def initialize_repair_sequence(payload: RepairRequestPayload, background_tasks: BackgroundTasks):
-#     """Accepts failure context and offloads the workflow to an async background worker."""
-#     session_id = str(uuid.uuid4())
-#     ACTIVE_REPAIR_JOBS[session_id] = {
-#         "status": "queued",
-#         "target_file_path": payload.target_file_path,
-#         "generated_patch": None
-#     }
-#     background_tasks.add_task(simulate_repair_worker, session_id, payload)
-#     return {
-#         "session_id": session_id,
-#         "status": "queued"
-#     }
-
-# @app.get("/api/status/{session_id}")
-# async def fetch_job_status(session_id: str):
-#     """Retrieves execution metrics for a specific session token."""
-#     if session_id not in ACTIVE_REPAIR_JOBS:
-#         raise HTTPException(status_code=404, detail="Requested session token not found.")
-#     return ACTIVE_REPAIR_JOBS[session_id]
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run("patching_agent.main:app", host="127.0.0.1", port=8000, reload=True)
