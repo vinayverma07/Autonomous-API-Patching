@@ -10,6 +10,7 @@ requests>=2.32.0
 passlib[bcrypt]
 pyjwt
 python-multipart
+bcrypt==3.2.2
 
 # AI & Orchestration
 langchain>=0.2.0
