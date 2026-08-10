@@ -1,8 +1,4 @@
-# """
-# Module: Central Database & Long-Term Memory Manager
-# Description: Implements async persistence models to record repair attempts,
-#              patch historical runs, and maintain operational logs in MongoDB Atlas.
-# """
+
 
 # import logging
 # from datetime import datetime, timezone
@@ -13,7 +9,7 @@
 # logger = logging.getLogger(__name__)
 
 # class DatabaseManager:
-#     """Manages the lifecycle of the asynchronous MongoDB Atlas connection pool and long-term memory logs."""
+#     """Manages asynchronous MongoDB connection pool, repair history, and user authentication."""
     
 #     def __init__(self):
 #         self.client: Optional[AsyncIOMotorClient] = None
@@ -38,17 +34,46 @@
 #             self.client = None
 #             self.db = None
 
-#     async def save_repair_history(self, session_id: str, state_dump: Dict[str, Any]) -> bool:
-#         """
-#         Saves or updates a complete snapshot of a repair operation in long-term memory.
-#         """
+#     # --- USER AUTHENTICATION DATABASE METHODS ---
+#     async def create_user(self, username: str, email: str, hashed_password: str) -> Optional[Dict[str, Any]]:
+#         """Registers a new user in MongoDB."""
 #         if self.db is None:
-#             logger.error("Database uninitialized. Cannot write repair logs.")
+#             return None
+
+#         users_col = self.db["users"]
+        
+#         # Check existing user
+#         existing_user = await users_col.find_one({"$or": [{"username": username}, {"email": email}]})
+#         if existing_user:
+#             return None
+
+#         user_doc = {
+#             "username": username,
+#             "email": email.lower(),
+#             "password": hashed_password,
+#             "created_at": datetime.now(timezone.utc)
+#         }
+
+#         result = await users_col.insert_one(user_doc)
+#         user_doc["_id"] = str(result.inserted_id)
+#         return user_doc
+
+#     async def get_user_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+#         """Retrieves user by username or email."""
+#         if self.db is None:
+#             return None
+
+#         users_col = self.db["users"]
+#         return await users_col.find_one({
+#             "$or": [{"username": identifier}, {"email": identifier.lower()}]
+#         })
+
+#     # --- REPAIR HISTORY METHODS ---
+#     async def save_repair_history(self, session_id: str, state_dump: Dict[str, Any]) -> bool:
+#         if self.db is None:
 #             return False
 
 #         collection = self.db["repair_history"]
-        
-#         # Build a persistent historical context package
 #         historical_document = {
 #             "session_id": session_id,
 #             "timestamp": datetime.now(timezone.utc),
@@ -62,35 +87,22 @@
 #         }
 
 #         try:
-#             # Upsert the record based on the session ID
 #             await collection.update_one(
 #                 {"session_id": session_id},
 #                 {"$set": historical_document},
 #                 upsert=True
 #             )
-#             logger.info(f"Successfully committed repair snapshot to database for session: {session_id}")
 #             return True
 #         except Exception as e:
-#             logger.error(f"Failed to write repair metrics snapshot to MongoDB Atlas: {e}")
+#             logger.error(f"Failed to write repair metrics: {e}")
 #             return False
 
 #     async def get_repair_record(self, session_id: str) -> Optional[Dict[str, Any]]:
-#         """Retrieves a historical repair snapshot from the database."""
 #         if self.db is None:
 #             return None
-            
-#         try:
-#             record = await self.db["repair_history"].find_one({"session_id": session_id})
-#             return record
-#         except Exception as e:
-#             logger.error(f"Error fetching historical database session {session_id}: {e}")
-#             return None
+#         return await self.db["repair_history"].find_one({"session_id": session_id})
 
 #     async def fetch_successful_patches(self, error_type: str) -> List[Dict[str, Any]]:
-#         """
-#         Queries long-term memory to find historical repair patterns that successfully
-#         fixed a specific type of exception class.
-#         """
 #         if self.db is None:
 #             return []
 
@@ -99,16 +111,12 @@
 #             "failure_analysis.error_type": error_type,
 #             "execution_status": "patch_validated_successfully"
 #         }
-
-#         try:
-#             cursor = collection.find(query).sort("timestamp", -1).limit(3)
-#             return await cursor.to_list(length=3)
-#         except Exception as e:
-#             logger.error(f"Failed to extract historical pattern matches for {error_type}: {e}")
-#             return []
+#         cursor = collection.find(query).sort("timestamp", -1).limit(3)
+#         return await cursor.to_list(length=3)
 
 # # Global database manager instance
 # db_manager = DatabaseManager()
+
 
 import logging
 from datetime import datetime, timezone
@@ -151,8 +159,6 @@ class DatabaseManager:
             return None
 
         users_col = self.db["users"]
-        
-        # Check existing user
         existing_user = await users_col.find_one({"$or": [{"username": username}, {"email": email}]})
         if existing_user:
             return None
@@ -179,13 +185,16 @@ class DatabaseManager:
         })
 
     # --- REPAIR HISTORY METHODS ---
-    async def save_repair_history(self, session_id: str, state_dump: Dict[str, Any]) -> bool:
+    async def save_repair_history(self, session_id: str, state_dump: Dict[str, Any], username: str = "anonymous") -> bool:
+        """Saves a complete snapshot of a repair operation linked to a specific username."""
         if self.db is None:
+            logger.error("Database uninitialized. Cannot write repair logs.")
             return False
 
         collection = self.db["repair_history"]
         historical_document = {
             "session_id": session_id,
+            "username": username,
             "timestamp": datetime.now(timezone.utc),
             "raw_logs": state_dump.get("raw_logs", ""),
             "target_file_path": state_dump.get("target_file_path", ""),
@@ -202,10 +211,28 @@ class DatabaseManager:
                 {"$set": historical_document},
                 upsert=True
             )
+            logger.info(f"Successfully committed repair snapshot for user {username}, session: {session_id}")
             return True
         except Exception as e:
-            logger.error(f"Failed to write repair metrics: {e}")
+            logger.error(f"Failed to write repair metrics snapshot: {e}")
             return False
+
+    async def get_user_repair_history(self, username: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieves all historical repair records created by a specific user."""
+        if self.db is None:
+            return []
+
+        try:
+            collection = self.db["repair_history"]
+            cursor = collection.find({"username": username}).sort("timestamp", -1).limit(limit)
+            records = await cursor.to_list(length=limit)
+            # Format MongoDB ObjectIDs to strings for Jinja rendering
+            for r in records:
+                r["_id"] = str(r["_id"])
+            return records
+        except Exception as e:
+            logger.error(f"Error fetching history for user {username}: {e}")
+            return []
 
     async def get_repair_record(self, session_id: str) -> Optional[Dict[str, Any]]:
         if self.db is None:
@@ -224,5 +251,4 @@ class DatabaseManager:
         cursor = collection.find(query).sort("timestamp", -1).limit(3)
         return await cursor.to_list(length=3)
 
-# Global database manager instance
 db_manager = DatabaseManager()
