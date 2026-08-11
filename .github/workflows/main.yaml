@@ -43,6 +43,6 @@ jobs:
             --env-file .env \
             patching-agent-backend:latest
 
-      - name: Prune Old Docker Images
+      - name: Prune Docker Containers and Build Cache
         run: |
-          docker image prune -f
+          docker system prune -f
