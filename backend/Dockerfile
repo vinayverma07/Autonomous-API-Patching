@@ -1,3 +1,24 @@
+# FROM python:3.11-slim
+
+# ENV PYTHONUNBUFFERED=1 \
+#     PYTHONDONTWRITEBYTECODE=1 \
+#     PYTHONPATH=/app/src
+
+# WORKDIR /app
+
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     build-essential \
+#     && rm -rf /var/lib/apt/lists/*
+
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# COPY src/ ./src/
+
+# EXPOSE 8000
+
+# CMD ["uvicorn", "patching_agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -6,12 +27,19 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install system build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc \
+    python3-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Upgrade pip first, then install requirements
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 
