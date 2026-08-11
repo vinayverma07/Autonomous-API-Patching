@@ -4,7 +4,7 @@ from datetime import datetime
 
 class UserRegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
+    email: str = Field(..., description="User email address")
     password: str = Field(..., min_length=6)
 
 class UserLoginRequest(BaseModel):
