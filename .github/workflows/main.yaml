@@ -27,7 +27,7 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t patching-agent-backend:latest .
+          docker build -t patching-agent-backend:latest ./backend
 
       - name: Stop Existing Container
         run: |
