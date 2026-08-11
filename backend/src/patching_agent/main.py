@@ -101,16 +101,16 @@ app = FastAPI(
 # ==========================================
 # 🌐 CORS MIDDLEWARE CONFIGURATION
 # ==========================================
+# Update allowed origins to include Vercel
 allowed_origins = [
-    "http://localhost:5173",  # Vite Dev Server
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",  # React Create-React-App / Next.js
-    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "https://*.vercel.app",  # Wildcard for Vercel preview builds
+    "https://your-custom-domain.vercel.app", # Replace with your real Vercel URL
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"], # Or specify explicit domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
