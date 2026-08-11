@@ -1,4 +1,4 @@
-name: Deploy Backend to AWS EC2 (Self-Hosted Runner)
+name: Build, Push to ECR, and Deploy Backend to AWS EC2
 
 on:
   push:
@@ -10,13 +10,41 @@ on:
       - 'backend/Dockerfile'
       - '.github/workflows/main.yaml'
 
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
 jobs:
   deploy:
-    runs-on: self-hosted # Runs directly on your EC2 instance
+    runs-on: self-hosted # Runs directly on your AWS EC2 runner
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Docker image from backend folder
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./backend
+
+          # Push both commit SHA tag and latest tag to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Create Environment Secrets File
         run: |
@@ -25,24 +53,28 @@ jobs:
           echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
 
-      - name: Build Docker Image
+      - name: Pull Latest Docker Image from ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          docker build -t patching-agent-backend:latest ./backend
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Stop Existing Container
+      - name: Stop and Remove Old Container
         run: |
           docker stop patching-backend || true
           docker rm patching-backend || true
 
-      - name: Run Updated Container
+      - name: Run Container from Pulled ECR Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker run -d \
             --name patching-backend \
             --restart always \
             -p 8000:8000 \
             --env-file .env \
-            patching-agent-backend:latest
+            $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Prune Docker Containers and Build Cache
+      - name: Prune Unused Docker System Files
         run: |
           docker system prune -f
