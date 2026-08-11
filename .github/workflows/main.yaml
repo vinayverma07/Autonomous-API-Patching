@@ -5,9 +5,9 @@ on:
     branches:
       - main
     paths:
-      - 'src/**'
-      - 'requirements.txt'
-      - 'Dockerfile'
+      - 'backend/src/**'
+      - 'backend/requirements.txt'
+      - 'backend/Dockerfile'
       - '.github/workflows/main.yaml'
 
 jobs:
