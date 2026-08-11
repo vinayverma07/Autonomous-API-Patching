@@ -17,6 +17,16 @@ env:
 jobs:
   deploy:
     runs-on: self-hosted # Runs directly on your AWS EC2 runner
+    steps:
+      - name: Pre-build Disk Cleanup
+        run: |
+          echo "Cleaning up disk space before build..."
+          docker system prune -a --volumes -f || true
+          rm -rf /home/ubuntu/actions-runner/_diag/* || true
+          rm -rf /home/ubuntu/actions-runner/_work/_temp/* || true
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
     steps:
       - name: Checkout Code
