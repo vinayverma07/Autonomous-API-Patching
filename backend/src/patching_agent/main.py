@@ -105,7 +105,7 @@ app = FastAPI(
 allowed_origins = [
     "http://localhost:5173",
     "https://*.vercel.app",  # Wildcard for Vercel preview builds
-    "https://your-custom-domain.vercel.app", # Replace with your real Vercel URL
+    "https://autonomous-api-patching.vercel.app", # Replace with your real Vercel URL
 ]
 
 app.add_middleware(
