@@ -16,19 +16,9 @@ env:
 
 jobs:
   deploy:
-    runs-on: self-hosted # Runs directly on your AWS EC2 runner
+    runs-on: self-hosted
+
     steps:
-      - name: Pre-build Disk Cleanup
-        run: |
-          echo "Cleaning up disk space before build..."
-          docker system prune -a --volumes -f || true
-          rm -rf /home/ubuntu/actions-runner/_diag/* || true
-          rm -rf /home/ubuntu/actions-runner/_work/_temp/* || true
-
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-    
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -48,11 +38,11 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build Docker image from backend folder
+          # Build Docker image
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./backend
 
-          # Push both commit SHA tag and latest tag to ECR
+          # Push images
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
@@ -85,6 +75,8 @@ jobs:
             --env-file .env \
             $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Prune Unused Docker System Files
+      - name: Safe Post-Build Cleanup
         run: |
-          docker system prune -f
+          # Clean build cache and unused images safely without killing runner files
+          docker builder prune -f
+          docker image prune -f
